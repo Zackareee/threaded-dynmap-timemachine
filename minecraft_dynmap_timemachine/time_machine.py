@@ -5,7 +5,11 @@ import io
 from . import projection
 from . import simple_downloader
 from PIL import Image
+from progressbar import ProgressBar, Percentage, Bar, ETA
 import threading
+
+
+
 class TimeMachine(object):
 
 
@@ -17,6 +21,7 @@ class TimeMachine(object):
 
     def capture_single_threaded(self, img_url, x, y):
         img_data = simple_downloader.download(img_url, True)
+        self.processed += 1
         self.image_data.append([img_data,x,y])
 
     def capture_single(self, map, t_loc, size, pause=0.25):
@@ -30,21 +35,19 @@ class TimeMachine(object):
         logging.info('downloading tiles...')
         # logging.info('tile image path: %s', image_url)
         total_tiles = len(range(from_tile.x, to_tile.x, zoomed_scale)) * len(range(from_tile.y, to_tile.y, zoomed_scale))
-        processed = 0
+        self.processed = 0
 
+        widgets = ['Test: ', Percentage(), ' ', Bar(marker='0', left='[', right=']'),
+                   ' ', ETA()]
+        pbar = ProgressBar(widgets=widgets, maxval=(((to_tile.x - from_tile.x) / zoomed_scale) * ((to_tile.y - from_tile.y) / zoomed_scale)))
+        pbar.start()
 
         threads = list()
         for x in range(from_tile.x, to_tile.x, zoomed_scale):
-            print(f"{x}x")
             for y in range(from_tile.y, to_tile.y, zoomed_scale):
-
                 img_rel_path = map.image_url(projection.TileLocation(x, y, t_loc.zoom))
                 img_url = self._dm_map.url + img_rel_path
-
-
-                processed += 1
-                logging.info('tile %d/%d [%d, %d]', processed, total_tiles, x, y)
-
+                logging.info('tile %d/%d [%d, %d]', self.processed, total_tiles, x, y)
                 try:
                     img_data = threading.Thread(target=self.capture_single_threaded,args=(img_url,x,y,))
                     threads.append(img_data)
@@ -53,6 +56,11 @@ class TimeMachine(object):
                     logging.info('Unable to download "%s": %s', img_url, str(e))
                     print('Unable to download "%s": %s', img_url, str(e))
                     continue
+
+
+                pbar.update(self.processed)
+                #time.sleep(float(pause))
+
 
         for i in range(len(threads)): #ensure all threads are ended before proceeding
             threads[i].join()
@@ -66,7 +74,9 @@ class TimeMachine(object):
             logging.debug('place to [%d, %d]', box[0], box[1])
             self.dest_img.paste(im, box)
                 # avoid throttle limit, don't overload the server
-                #time.sleep(float(pause))
+
+
+        pbar.finish()
         return self.dest_img
 
 
